@@ -13,7 +13,7 @@ const formatNumber = (n) => Math.round(n).toLocaleString('en-US');
 const safeRead = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
 const safeWrite = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Storage is optional. */ } };
 const stored = safeRead('uptime.settings.v1', {});
-const settings = { audio: stored?.audio !== false, volume: Number.isFinite(stored?.volume) ? Math.max(0, Math.min(1, stored.volume)) : .65, quality: ['high', 'balanced', 'low'].includes(stored?.quality) ? stored.quality : 'high', reducedMotion: stored?.reducedMotion ?? matchMedia('(prefers-reduced-motion: reduce)').matches };
+const settings = { audio: stored?.audio !== false, volume: Number.isFinite(stored?.volume) ? Math.max(0, Math.min(1, stored.volume)) : .65, quality: ['high', 'balanced', 'low'].includes(stored?.quality) ? stored.quality : 'high', reducedMotion: stored?.reducedMotion === true };
 let records = safeRead('uptime.runs.v1', []);
 records = Array.isArray(records) ? records.filter(r => r && Number.isFinite(r.time) && Number.isFinite(r.tokens) && typeof r.id === 'string').slice(0, 20) : [];
 const sim = new Simulation();
