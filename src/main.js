@@ -22,6 +22,8 @@ let difficulty = 'standard', overlayKind = '', runId = '', world, bannerTimer, r
 let frames = 0, frameTime = 0, lastHud = 0, fps = 60, contextLost = false;
 const keys = new Set();
 const touch = { x: 0, z: 0, id: null, cx: 0, cy: 0 };
+const touchAim = { x: 0, z: 0, id: null, cx: 0, cy: 0 };
+const aimPointer = { x: 0, y: 0, active: false, overUI: false };
 
 $('#app').innerHTML = `
   <main id="game" aria-label="UPTIME survival game">
@@ -65,9 +67,11 @@ $('#app').innerHTML = `
         <div id="combo-display" class="combo-display"><strong id="combo-number">0</strong><span>REQUEST CHAIN</span></div>
         <div class="abilities"><button class="ability" id="dash-ability" data-action="dash" aria-label="Latency dash, Space"><span class="ability-icon">${icon('dash')}<span id="dash-timer" class="ability-timer"></span></span><span class="ability-text"><strong>LATENCY DASH</strong><span id="dash-state">READY</span></span><kbd>SPACE</kbd><i class="cooldown-cover" id="dash-cover"></i></button><button class="ability" id="nova-ability" data-action="nova" aria-label="Garbage collection pulse, Q"><span class="ability-icon">${icon('nova')}<span id="nova-timer" class="ability-timer"></span></span><span class="ability-text"><strong>GARBAGE COLLECT</strong><span id="nova-state">READY</span></span><kbd>Q</kbd><i class="cooldown-cover" id="nova-cover"></i></button></div>
       </div>
-      <div id="control-hint" class="control-hint"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> MOVE</span><i></i><span>ATTACKS ARE AUTOMATIC</span><i></i><span>COLLECT <b>◆</b> TO EVOLVE</span></div>
+      <div id="control-hint" class="control-hint"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> MOVE</span><i></i><span>MOUSE AIM · AUTO FIRE</span><i></i><span>COLLECT <b>◆</b> TO EVOLVE</span></div>
     </section>
-    <div id="touch-zone" aria-label="Touch movement area"><div id="touch-base"><div id="touch-stick"></div></div></div>
+    <div id="touch-zone" class="touch-zone" aria-label="Touch movement area"><div id="touch-base" class="touch-base"><div id="touch-stick" class="touch-stick"></div></div></div>
+    <div id="touch-aim-zone" class="touch-zone" aria-label="Touch aiming area"><div id="touch-aim-base" class="touch-base"><div id="touch-aim-stick" class="touch-stick"></div></div></div>
+    <div id="aim-reticle" aria-hidden="true"></div>
     <div id="toast" class="toast" role="status"></div><dialog id="overlay" aria-labelledby="dialog-title"></dialog>
     <div id="loading" class="loading"><div class="loading-mark">${icon('logo')}</div><span>INITIALIZING NEURAL ENGINE</span><div class="loading-line"></div></div>
   </main>`;
@@ -79,12 +83,12 @@ updateSoundButton();document.body.classList.toggle('reduced-motion',settings.red
 function updateBest(){const best=records.length?Math.max(...records.map(r=>r.tokens)):0;$('#best-run').textContent=best?`${formatNumber(best)} TK`:'NO RUNS YET';}
 updateBest();
 function toast(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').classList.remove('visible'),2400);}
-function showDialog(kind,html){overlayKind=kind;overlay.innerHTML=html;overlay.className=`dialog-${kind}`;if(!overlay.open)overlay.showModal();keys.clear();touch.x=touch.z=0;overlay.querySelector('[autofocus], .primary-button, button')?.focus({preventScroll:true});}
+function showDialog(kind,html){overlayKind=kind;overlay.innerHTML=html;overlay.className=`dialog-${kind}`;if(!overlay.open)overlay.showModal();keys.clear();clearTouchControls();overlay.querySelector('[autofocus], .primary-button, button')?.focus({preventScroll:true});}
 function closeDialog(){overlay.close();overlayKind='';if(sim.mode==='paused')sim.resume();if(sim.mode==='menu')$('[data-action="start"]').focus({preventScroll:true});}
 function dialogHeader(eyebrow,title,close=true){return `<div class="dialog-heading"><div><div class="eyebrow">${eyebrow}</div><h2 id="dialog-title">${title}</h2></div>${close?`<button class="icon-button dialog-close" data-action="close" aria-label="Close dialog">${icon('close')}</button>`:''}</div>`;}
 
 function showHelp(){
-  sim.pause();showDialog('help',`${dialogHeader('OPERATOR MANUAL','One model. Endless demand.')}<p class="dialog-intro">You are the last inference instance. Stay online for five minutes and resolve the final surge.</p><div class="help-grid"><div><span class="help-number">01</span>${icon('dash')}<h3>Stay in motion</h3><p>Move with <kbd>WASD</kbd> or <kbd>↑↓←→</kbd>. Your model automatically fires at nearby requests. On touch screens, drag the left side to move.</p></div><div><span class="help-number">02</span>${icon('orbit')}<h3>Evolve your model</h3><p>Collect mint token fragments left by resolved requests. Each level lets you choose a permanent upgrade for this run.</p></div><div><span class="help-number">03</span>${icon('shield')}<h3>Protect your uptime</h3><p>Incoming requests cause server errors and drain uptime. White repair fragments restore it. At zero, your instance goes offline.</p></div></div><div class="control-list"><div><kbd>SPACE</kbd><span><strong>Latency dash</strong>Brief speed and invulnerability.</span></div><div><kbd>Q</kbd><span><strong>Garbage collect</strong>Clear nearby requests and hostile tokens.</span></div><div><kbd>ESC</kbd><span><strong>Pause</strong>Take your instance out of rotation.</span></div></div><div class="dialog-footer"><span class="mono">A FICTIONAL SIMULATION OF INFERENCE OVERLOAD.</span><button class="primary-button" data-action="close">UNDERSTOOD ${icon('arrow')}</button></div>`);
+  sim.pause();showDialog('help',`${dialogHeader('OPERATOR MANUAL','One model. Endless demand.')}<p class="dialog-intro">You are the last inference instance. Stay online for five minutes and resolve the final surge.</p><div class="help-grid"><div><span class="help-number">01</span>${icon('dash')}<h3>Move and aim</h3><p>Move with <kbd>WASD</kbd> or <kbd>↑↓←→</kbd>. Aim with your mouse; bolts fire automatically toward your cursor. On touch screens, drag the left side to move and the right side to aim.</p></div><div><span class="help-number">02</span>${icon('orbit')}<h3>Evolve your model</h3><p>Collect mint token fragments left by resolved requests. Each level lets you choose a permanent upgrade for this run.</p></div><div><span class="help-number">03</span>${icon('shield')}<h3>Protect your uptime</h3><p>Incoming requests cause server errors and drain uptime. White repair fragments restore it. At zero, your instance goes offline.</p></div></div><div class="control-list"><div><kbd>SPACE</kbd><span><strong>Latency dash</strong>Brief speed and invulnerability.</span></div><div><kbd>Q</kbd><span><strong>Garbage collect</strong>Clear nearby requests and hostile tokens.</span></div><div><kbd>ESC</kbd><span><strong>Pause</strong>Take your instance out of rotation.</span></div></div><div class="dialog-footer"><span class="mono">A FICTIONAL SIMULATION OF INFERENCE OVERLOAD.</span><button class="primary-button" data-action="close">UNDERSTOOD ${icon('arrow')}</button></div>`);
 }
 function showSettings(){
   sim.pause();showDialog('settings',`${dialogHeader('INSTANCE CONFIGURATION','Tune your experience.')}<div class="settings-list"><label class="setting"><span><strong>Audio</strong><small>Procedural soundtrack and reactive sound effects.</small></span><input id="audio-setting" type="checkbox" role="switch" ${settings.audio?'checked':''}></label><label class="setting"><span><strong>Master volume</strong><small>Keep a little room to think.</small></span><input id="volume-setting" type="range" aria-label="Master volume" min="0" max="100" value="${Math.round(settings.volume*100)}"></label><label class="setting"><span><strong>Visual quality</strong><small>High: full resolution + bloom. Balanced: lighter rendering. Low: no post effects.</small></span><select id="quality-setting" aria-label="Visual quality">${['high','balanced','low'].map(q=>`<option value="${q}" ${q===settings.quality?'selected':''}>${q[0].toUpperCase()+q.slice(1)}</option>`).join('')}</select></label><label class="setting"><span><strong>Reduced motion</strong><small>Disable camera shake, parallax, and UI animation.</small></span><input id="motion-setting" type="checkbox" role="switch" ${settings.reducedMotion?'checked':''}></label></div><div class="settings-note">${icon('info')} Settings and run records are saved only in this browser.</div><div class="dialog-footer"><span class="mono">NO ACCOUNT. NO TRACKING. JUST YOU.</span><button class="primary-button" data-action="close">RETURN ${icon('arrow')}</button></div>`);
@@ -111,15 +115,15 @@ function showResult(won){
 }
 function startGame(){
   if(!world||contextLost)return;
-  clearTimeout(resultTimer);clearTimeout(bannerTimer);if(overlay.open)overlay.close();overlayKind='';keys.clear();touch.x=touch.z=0;sim.reset(difficulty);
+  clearTimeout(resultTimer);clearTimeout(bannerTimer);if(overlay.open)overlay.close();overlayKind='';keys.clear();clearTouchControls();aimPointer.active=false;sim.reset(difficulty);
   runId=crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`;
   $('#menu').classList.add('hidden');$('#menu-shade').classList.add('hidden');$('#hud').classList.remove('hidden');document.body.classList.add('in-game');
   $('#error-feed').replaceChildren();$('#floating-labels').replaceChildren();$('#system-status').textContent='INFERENCE ACTIVE';$('#clock-target').textContent='SURVIVE UNTIL 05:00';
-  updateLoadout();updateHud();showBanner('INSTANCE_01 / CONNECTED','YOU ARE ONLINE.','Move to survive. Your model attacks automatically.');
+  updateLoadout();updateHud();showBanner('INSTANCE_01 / CONNECTED','YOU ARE ONLINE.',matchMedia('(pointer:coarse)').matches?'Left thumb moves. Right thumb aims. Bolts fire automatically.':'WASD to move. Mouse to aim. Bolts fire automatically.');
   sound.unlock().then(()=>sound.play('start')).catch(()=>{});document.activeElement?.blur();
 }
 function returnHome(){
-  clearTimeout(resultTimer);clearTimeout(bannerTimer);if(overlay.open)overlay.close();overlayKind='';sim.mode='menu';keys.clear();touch.x=touch.z=0;
+  clearTimeout(resultTimer);clearTimeout(bannerTimer);if(overlay.open)overlay.close();overlayKind='';sim.mode='menu';keys.clear();clearTouchControls();aimPointer.active=false;
   $('#menu').classList.remove('hidden');$('#menu-shade').classList.remove('hidden');$('#hud').classList.add('hidden');document.body.classList.remove('in-game');$('#system-status').textContent='ALL SYSTEMS NOMINAL';$('[data-action="start"]').focus({preventScroll:true});
 }
 function showBanner(eyebrow,title,detail=''){
@@ -130,7 +134,7 @@ function showError(e){
   const body=document.createElement('div'),title=document.createElement('strong'),detail=document.createElement('span'),loss=document.createElement('span');title.textContent=e.title;detail.textContent=e.detail;loss.className='error-loss';loss.textContent=`−${e.damage.toFixed(6)}`;body.append(title,detail);node.append(code,body,loss);$('#error-feed').prepend(node);while($('#error-feed').children.length>3)$('#error-feed').lastChild.remove();setTimeout(()=>node.remove(),4800);
 }
 function updateLoadout(){
-  const active=UPGRADES.filter(u=>sim.upgrades[u.id]&&u.id!=='heal');$('#loadout').innerHTML=`<span class="loadout-icon" title="Inference bolt">${icon('bolt')}</span>${active.map(u=>`<span class="loadout-icon" title="${u.title} · Rank ${sim.upgrades[u.id]}">${icon(u.icon)}<b>${sim.upgrades[u.id]}</b></span>`).join('')}${active.length?'':'<span class="mono loadout-description">INFERENCE BOLT / AUTO</span>'}`;
+  const active=UPGRADES.filter(u=>sim.upgrades[u.id]&&u.id!=='heal');$('#loadout').innerHTML=`<span class="loadout-icon" title="Inference bolt">${icon('bolt')}</span>${active.map(u=>`<span class="loadout-icon" title="${u.title} · Rank ${sim.upgrades[u.id]}">${icon(u.icon)}<b>${sim.upgrades[u.id]}</b></span>`).join('')}${active.length?'':'<span class="mono loadout-description">INFERENCE BOLT / AIMED</span>'}`;
 }
 function updateHud(){
   const p=sim.player;dom['uptime-value'].textContent=p.uptime.toFixed(6);dom['uptime-fill'].style.width=`${p.uptime/MAX_UPTIME*100}%`;
@@ -185,14 +189,48 @@ window.addEventListener('keydown',e=>{
   if(e.repeat)return;if(e.code==='Space')sim.dash();if(e.code==='KeyQ')sim.nova();if(e.code==='KeyP')pauseGame();if(e.code==='KeyM')$('#sound-button').click();if(e.code==='KeyF')$('[data-action="fullscreen"]').click();
 });
 window.addEventListener('keyup',e=>keys.delete(e.code));
-window.addEventListener('blur',()=>{keys.clear();touch.x=touch.z=0;if(sim.mode==='running')pauseGame();});
+window.addEventListener('blur',()=>{keys.clear();clearTouchControls();if(sim.mode==='running')pauseGame();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){keys.clear();if(sim.mode==='running')pauseGame();sound.suspend().catch(()=>{});}else if(settings.audio&&sound.context)sound.unlock().catch(()=>{});});
-window.addEventListener('pointermove',e=>{if(world){world.pointer.x=e.clientX/innerWidth*2-1;world.pointer.y=e.clientY/innerHeight*2-1;}});
-const zone=$('#touch-zone');
-zone.addEventListener('pointerdown',e=>{if(sim.mode!=='running'||touch.id!==null)return;e.preventDefault();zone.setPointerCapture(e.pointerId);touch.id=e.pointerId;touch.cx=e.clientX;touch.cy=e.clientY;$('#touch-base').style.left=`${e.clientX}px`;$('#touch-base').style.top=`${e.clientY}px`;$('#touch-base').classList.add('active');});
-zone.addEventListener('pointermove',e=>{if(touch.id!==e.pointerId)return;const dx=e.clientX-touch.cx,dy=e.clientY-touch.cy,d=Math.max(45,Math.hypot(dx,dy));touch.x=dx/d;touch.z=dy/d;$('#touch-stick').style.transform=`translate(${touch.x*35}px,${touch.z*35}px)`;});
-function clearTouch(e){if(e.pointerId!==touch.id)return;touch.id=null;touch.x=touch.z=0;$('#touch-base').classList.remove('active');$('#touch-stick').style.transform='translate(0,0)';}
-zone.addEventListener('pointerup',clearTouch);zone.addEventListener('pointercancel',clearTouch);zone.addEventListener('lostpointercapture',clearTouch);
+window.addEventListener('pointermove',e=>{
+  if(e.pointerType==='touch')return;
+  if(world){world.pointer.x=e.clientX/innerWidth*2-1;world.pointer.y=e.clientY/innerHeight*2-1;}
+  if(sim.mode==='running'){
+    aimPointer.x=e.clientX;aimPointer.y=e.clientY;aimPointer.active=true;aimPointer.overUI=!!e.target.closest('button,a,dialog');
+  }
+});
+const reticle=$('#aim-reticle');
+const touchControls=[
+  {state:touch,zone:$('#touch-zone'),base:$('#touch-base'),stick:$('#touch-stick')},
+  {state:touchAim,zone:$('#touch-aim-zone'),base:$('#touch-aim-base'),stick:$('#touch-aim-stick')},
+];
+function resetTouchControl({state,zone,base,stick}){
+  const id=state.id;state.id=null;state.x=state.z=0;
+  if(id!==null&&zone.hasPointerCapture(id))zone.releasePointerCapture(id);
+  base.classList.remove('active');stick.style.transform='translate(0,0)';
+}
+function clearTouchControls(){touchControls.forEach(resetTouchControl);}
+for(const control of touchControls){
+  const {state,zone,base,stick}=control;
+  zone.addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='touch'||sim.mode!=='running'||state.id!==null)return;
+    e.preventDefault();zone.setPointerCapture(e.pointerId);state.id=e.pointerId;state.cx=e.clientX;state.cy=e.clientY;aimPointer.active=false;
+    base.style.left=`${e.clientX}px`;base.style.top=`${e.clientY}px`;base.classList.add('active');
+  });
+  zone.addEventListener('pointermove',e=>{
+    if(state.id!==e.pointerId)return;
+    const dx=e.clientX-state.cx,dy=e.clientY-state.cy,d=Math.max(45,Math.hypot(dx,dy));
+    state.x=dx/d;state.z=dy/d;stick.style.transform=`translate(${state.x*35}px,${state.z*35}px)`;
+  });
+  const release=e=>{if(e.pointerId===state.id)resetTouchControl(control);};
+  for(const event of ['pointerup','pointercancel','lostpointercapture'])zone.addEventListener(event,release);
+}
+function currentAim(){
+  if(touchAim.id!==null&&Math.hypot(touchAim.x,touchAim.z)>.12){
+    const origin=world.project(sim.player.x,.85,sim.player.z);
+    return world.aimAt(origin.x+touchAim.x*120,origin.y+touchAim.z*120,sim.player);
+  }
+  return aimPointer.active?world.aimAt(aimPointer.x,aimPointer.y,sim.player):null;
+}
 function handleEvents(events){
   world.handle(events);for(const e of events){if(e.type!=='start')sound.play(e.type);if(e.type==='level')showUpgrade();if(e.type==='error')showError(e);if(e.type==='wave')showBanner(`TRAFFIC WAVE ${String(e.wave).padStart(2,'0')}`,e.text,`Demand is rising. ${sim.enemies.length} requests in flight.`);if(e.type==='boss')showBanner('CRITICAL EVENT / GLOBAL SURGE','THE THUNDERING HERD','Resolve the surge. Keep your instance alive.');if(e.type==='bossDefeated')showBanner('SURGE RESOLVED','PRESSURE RELEASED.','Keep serving until 05:00.');if(e.type==='death'||e.type==='victory'){clearTimeout(bannerTimer);$('#wave-banner').classList.remove('visible');$('#system-status').textContent=e.type==='death'?'INSTANCE OFFLINE':'SERVICE MAINTAINED';const won=e.type==='victory';recordRun(won);resultTimer=setTimeout(()=>{if(sim.mode===(won?'victory':'dead'))showResult(won);},won?900:1100);}}
 }
@@ -200,7 +238,10 @@ let last=performance.now(),accumulator=0;
 function frame(now){
   requestAnimationFrame(frame);const realDelta=(now-last)/1000,dt=Math.min(realDelta,.05);last=now;if(!world||contextLost||document.hidden)return;
   const x=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)+touch.x,z=(keys.has('KeyS')||keys.has('ArrowDown')?1:0)-(keys.has('KeyW')||keys.has('ArrowUp')?1:0)+touch.z;
-  if(sim.mode==='running'){accumulator+=Math.min(realDelta,.25);while(accumulator>=1/60&&sim.mode==='running'){sim.step(1/60,{x,z});accumulator-=1/60;}}else accumulator=0;
+  if(sim.mode==='running'){accumulator+=Math.min(realDelta,.25);while(accumulator>=1/60&&sim.mode==='running'){sim.step(1/60,{x,z,...currentAim()});accumulator-=1/60;}}else accumulator=0;
+  const aiming=sim.mode==='running'&&aimPointer.active&&!aimPointer.overUI;
+  document.body.classList.toggle('aiming',aiming);reticle.classList.toggle('visible',aiming);
+  if(aiming)reticle.style.transform=`translate(${aimPointer.x}px,${aimPointer.y}px) translate(-50%,-50%)`;
   handleEvents(sim.drainEvents());world.update(dt,sim);sound.update(sim);frames++;frameTime+=realDelta;if(frameTime>=1){fps=Math.round(frames/frameTime);$('#fps').textContent=fps;frames=0;frameTime=0;}if(now-lastHud>70){if(sim.mode!=='menu'){updateHud();updateLabels();}lastHud=now;}
 }
 try{

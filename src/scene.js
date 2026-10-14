@@ -68,6 +68,10 @@ export class World {
     pmrem.dispose();
     this.scene.fog = new THREE.FogExp2(0x050c10, 0.014);
     this.camera = new THREE.PerspectiveCamera(44, innerWidth / innerHeight, 0.1, 260);
+    this.aimRay = new THREE.Raycaster();
+    this.aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.85);
+    this.aimScreen = new THREE.Vector2();
+    this.aimPoint = new THREE.Vector3();
     this.camera.position.set(17, 15, 27);
     this.camera.lookAt(-7, 1, 0);
     this.target = new THREE.Vector3(-7, 1, 0);
@@ -95,6 +99,12 @@ export class World {
     this.createCore();
     this.createAmbient();
     this.createInstances();
+    const aimGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-0.3, 0, -1.8), new THREE.Vector3(0, 0, -2.15), new THREE.Vector3(0.3, 0, -1.8),
+    ]);
+    this.aimMarker = new THREE.Line(aimGeometry, new THREE.LineBasicMaterial({ color: MINT, transparent: true, opacity: 0.8, toneMapped: false }));
+    this.aimMarker.visible = false;
+    this.scene.add(this.aimMarker);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -357,6 +367,9 @@ export class World {
     this.coreGlow.material.opacity=menu?.22: (p.invulnerable>0?.5:.16);
     this.coreLight.position.copy(this.core.position);this.coreLight.intensity=menu?35:12;
     this.playerBeacon.position.copy(this.core.position);this.playerBeacon.visible=!menu&&sim.mode!=='dead';
+    this.aimMarker.visible=active;
+    this.aimMarker.position.set(p.x,.85,p.z);
+    this.aimMarker.rotation.y=Math.atan2(-p.aimX,-p.aimZ);
     this.halo.position.set(this.core.position.x,-.22,this.core.position.z);this.halo.scale.setScalar(menu?2.7:1);this.halo.material.opacity=menu?.3:.55;
     this.plinth.scale.setScalar(1-this.transition*.96);
     this.plinth.visible=this.transition<.99;
@@ -423,6 +436,15 @@ export class World {
   project(x,y,z) {
     v3.set(x,y,z).project(this.camera);
     return {x:(v3.x*.5+.5)*innerWidth,y:(-v3.y*.5+.5)*innerHeight,visible:v3.z<1 && Math.abs(v3.x)<1.1 && Math.abs(v3.y)<1.1};
+  }
+
+  aimAt(clientX,clientY,player) {
+    const bounds=this.renderer.domElement.getBoundingClientRect();
+    this.aimScreen.set((clientX-bounds.left)/bounds.width*2-1,1-(clientY-bounds.top)/bounds.height*2);
+    this.aimRay.setFromCamera(this.aimScreen,this.camera);
+    if(!this.aimRay.ray.intersectPlane(this.aimPlane,this.aimPoint))return null;
+    const dx=this.aimPoint.x-player.x,dz=this.aimPoint.z-player.z,length=Math.hypot(dx,dz);
+    return length>.1?{aimX:dx/length,aimZ:dz/length}:null;
   }
 
   setQuality(quality) {

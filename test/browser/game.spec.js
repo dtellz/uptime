@@ -26,10 +26,50 @@ test('settings persist, archive stores results, and no network services are need
   await page.getByRole('button',{name:'INITIALIZE RUN'}).click();await page.evaluate(()=>{const s=window.__uptime.sim;s.time=20;s.tokens=12345;s.player.invulnerable=0;s.hurt(2);});await expect(page.getByRole('dialog')).toContainText('SERVER DOWN');await page.getByRole('button',{name:'RETURN TO TITLE'}).click();await page.getByRole('button',{name:/RUN ARCHIVE/}).click();await expect(page.getByRole('table')).toContainText('12,345');expect(external).toEqual([]);
 });
 
-test('mobile title and touch movement fit the screen',async({browser})=>{
+test('mouse aim controls shots in every direction and stays on the cursor while moving',async({page})=>{
+  await page.goto('/?qa=1');await expect(page.locator('#loading')).toHaveCount(0);await page.getByRole('button',{name:'INITIALIZE RUN'}).click();
+  await page.evaluate(()=>{const s=window.__uptime.sim;s.spawnTimer=999;s.enemies=[];s.player.x=6;s.player.z=4;s.player.invulnerable=999;});
+  await page.waitForFunction(()=>Math.abs(window.__uptime.world.camera.position.x-6*.74)<.02);
+  for(const [dx,dz] of [[1,0],[0,-1],[-1,0],[0,1]]){
+    const cursor=await page.evaluate(({dx,dz})=>{
+      const {sim:s,world}=window.__uptime,p=s.player;s.enemies=[];
+      s.spawnEnemy('context',{x:p.x-dx*3,z:p.z-dz*3,speed:0});
+      return world.project(p.x+dx*12,.85,p.z+dz*12);
+    },{dx,dz});
+    await page.mouse.move(cursor.x,cursor.y);
+    await page.evaluate(()=>{const s=window.__uptime.sim;s.bullets=[];s.fireTimer=0;});
+    await page.waitForFunction(({dx,dz})=>{const b=window.__uptime.sim.bullets.at(-1);return b&&(b.vx*dx+b.vz*dz)/36>.999;},{dx,dz});
+    expect(await page.evaluate(()=>{const e=window.__uptime.sim.enemies[0];return e.hp===e.maxHp;})).toBe(true);
+  }
+  await expect(page.locator('#aim-reticle')).toBeVisible();
+  await page.keyboard.down('a');await page.waitForTimeout(400);await page.keyboard.up('a');
+  expect(await page.evaluate(()=>{
+    const {sim:s,world}=window.__uptime,r=document.querySelector('#aim-reticle').getBoundingClientRect();
+    const expected=world.aimAt(r.x+r.width/2,r.y+r.height/2,s.player);
+    return s.player.aimX*expected.aimX+s.player.aimZ*expected.aimZ;
+  })).toBeGreaterThan(.999);
+  await page.screenshot({path:'test-results/manual-aim-desktop.png'});
+  await page.keyboard.press('Escape');await expect(page.locator('#aim-reticle')).not.toBeVisible();
+});
+
+test('mobile title and independent touch movement and aiming fit the screen',async({browser})=>{
   const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:1});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:5173/?qa=1');await expect(page.locator('#loading')).toHaveCount(0);await page.screenshot({path:'test-results/title-mobile.png'});await page.getByRole('button',{name:'INITIALIZE RUN'}).tap();await expect(page.locator('#hud')).toBeVisible();
-  await page.locator('#touch-zone').dispatchEvent('pointerdown',{pointerId:1,clientX:80,clientY:420,pointerType:'touch'});await page.locator('#touch-zone').dispatchEvent('pointermove',{pointerId:1,clientX:125,clientY:420,pointerType:'touch'});await page.waitForTimeout(400);expect(await page.evaluate(()=>window.__uptime.sim.player.x)).toBeGreaterThan(1);await page.locator('#touch-zone').dispatchEvent('pointerup',{pointerId:1,pointerType:'touch'});
+  const input=await context.newCDPSession(page);
+  await input.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{id:1,x:80,y:420},{id:2,x:310,y:510}]});
+  await input.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{id:1,x:125,y:420},{id:2,x:265,y:510}]});
+  await page.waitForTimeout(400);expect(await page.evaluate(()=>window.__uptime.sim.player.x)).toBeGreaterThan(1);
+  expect(await page.evaluate(()=>{
+    const {sim:s,world}=window.__uptime,p=s.player,a=world.project(p.x,.85,p.z),b=world.project(p.x+p.aimX*6,.85,p.z+p.aimZ*6);
+    return b.x<a.x&&Math.abs(b.y-a.y)<2;
+  })).toBe(true);
+  await expect(page.locator('#touch-base')).toBeVisible();await expect(page.locator('#touch-aim-base')).toBeVisible();
+  await page.screenshot({path:'test-results/touch-aim-mobile.png'});
+  await input.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  const direction=await page.evaluate(()=>({x:window.__uptime.sim.player.aimX,z:window.__uptime.sim.player.aimZ}));
+  await page.waitForTimeout(150);
+  expect(await page.evaluate(()=>({x:window.__uptime.sim.player.aimX,z:window.__uptime.sim.player.aimZ}))).toEqual(direction);
+  await expect(page.locator('#touch-base')).not.toBeVisible();await expect(page.locator('#touch-aim-base')).not.toBeVisible();
   await page.getByRole('button',{name:'Garbage collection pulse, Q'}).tap();await expect(page.locator('#nova-state')).toHaveText('RECHARGING');await page.screenshot({path:'test-results/combat-mobile.png'});expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);expect(errors).toEqual([]);await context.close();
 });
 

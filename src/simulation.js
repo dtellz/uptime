@@ -22,7 +22,7 @@ export const ERRORS = {
 export const UPGRADES = [
   { id: 'throughput', title: 'Speculative decoding', category: 'THROUGHPUT', description: 'Think faster. Fire inference bolts 22% more often.', icon: 'bolt', stat: '+22% fire rate', max: 5 },
   { id: 'damage', title: 'Deeper reasoning', category: 'COMPUTE', description: 'Make every token count. Inference bolts deal 35% more damage.', icon: 'core', stat: '+35% bolt damage', max: 5 },
-  { id: 'multishot', title: 'Parallel inference', category: 'ARCHITECTURE', description: 'Process another request at the same time with an extra bolt.', icon: 'split', stat: '+1 simultaneous bolt', max: 4 },
+  { id: 'multishot', title: 'Parallel inference', category: 'ARCHITECTURE', description: 'Widen your aimed volley with an extra inference bolt.', icon: 'split', stat: '+1 simultaneous bolt', max: 4 },
   { id: 'orbit', title: 'Attention head', category: 'DEFENSE', description: 'An orbiting attention head resolves requests that get too close.', icon: 'orbit', stat: '+1 orbiting defender', max: 4 },
   { id: 'nova', title: 'Batch processing', category: 'CAPACITY', description: 'A wider garbage collection pulse hits harder and recharges faster.', icon: 'nova', stat: '+25% pulse · −15% cooldown', max: 4 },
   { id: 'magnet', title: 'Extended context', category: 'MEMORY', description: 'Collect more knowledge. Expand your token pickup radius.', icon: 'expand', stat: '+50% collection range', max: 3 },
@@ -79,7 +79,7 @@ export class Simulation {
     this.upgrades = {};
     this.choices = [];
     this.lastError = null;
-    this.player = { x: 0, z: 0, vx: 0, vz: 0, facingX: 0, facingZ: -1, uptime: MAX_UPTIME, invulnerable: 1.8, dashTime: 0, dashCooldown: 0, novaCooldown: 0, lastHit: -10 };
+    this.player = { x: 0, z: 0, vx: 0, vz: 0, facingX: 0, facingZ: -1, aimX: 0, aimZ: -1, uptime: MAX_UPTIME, invulnerable: 1.8, dashTime: 0, dashCooldown: 0, novaCooldown: 0, lastHit: -10 };
     this.stats = { speed: 8.1, fireInterval: 0.3, damage: 2, multishot: 1, pierce: 0, orbit: 0, magnet: 3.2, regen: 0, novaRadius: 12, novaDamage: 14, novaCooldown: 15, dashCooldown: 2.8 };
     this.emit('start');
   }
@@ -228,6 +228,11 @@ export class Simulation {
     const dt = Math.min(Math.max(delta, 0), 0.05);
     this.time += dt;
     const p = this.player;
+    const aimLength = Math.hypot(input.aimX, input.aimZ);
+    if (Number.isFinite(aimLength) && aimLength > 0.001) {
+      p.aimX = input.aimX / aimLength;
+      p.aimZ = input.aimZ / aimLength;
+    }
     p.invulnerable = Math.max(0, p.invulnerable - dt);
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.novaCooldown = Math.max(0, p.novaCooldown - dt);
@@ -301,17 +306,14 @@ export class Simulation {
     }
 
     this.fireTimer -= dt;
-    if (this.fireTimer <= 0 && this.enemies.length) {
-      const targets = this.enemies.filter(e => e.hp > 0 && Math.hypot(e.x - p.x, e.z - p.z) < 24).sort((a, b) => (a.x-p.x)**2+(a.z-p.z)**2 - (b.x-p.x)**2-(b.z-p.z)**2);
-      if (targets.length) {
-        this.fireTimer = this.stats.fireInterval;
-        for (let i = 0; i < this.stats.multishot; i++) {
-          const t = targets[i % targets.length];
-          const a = Math.atan2(t.z - p.z, t.x - p.x) + (i >= targets.length ? (i % 2 ? 0.06 : -0.06) : 0);
-          this.bullets.push({ id: ++this.id, x: p.x, z: p.z, vx: Math.cos(a) * 36, vz: Math.sin(a) * 36, life: 0.85, damage: this.stats.damage, remaining: this.stats.pierce + 1, hits: new Set() });
-        }
-        this.emit('fire');
+    if (this.fireTimer <= 0) {
+      this.fireTimer = this.stats.fireInterval;
+      const direction = Math.atan2(p.aimZ, p.aimX);
+      for (let i = 0; i < this.stats.multishot; i++) {
+        const a = direction + (i - (this.stats.multishot - 1) / 2) * 0.1;
+        this.bullets.push({ id: ++this.id, x: p.x, z: p.z, vx: Math.cos(a) * 36, vz: Math.sin(a) * 36, life: 0.85, damage: this.stats.damage, remaining: this.stats.pierce + 1, hits: new Set() });
       }
+      this.emit('fire');
     }
 
     for (const b of this.bullets) {

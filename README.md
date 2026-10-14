@@ -1,6 +1,6 @@
 # UPTIME
 
-A self-hosted browser survival game about an inference instance facing endless demand. Move through a three-dimensional neural arena, automatically resolve incoming requests, collect experience, and evolve your model before the final traffic surge. Uptime starts at exactly `0.999999`; inference failures deplete it until the instance goes offline.
+A self-hosted browser survival game about an inference instance facing endless demand. Move through a three-dimensional neural arena, aim inference bolts at incoming requests, collect experience, and evolve your model before the final traffic surge. Uptime starts at exactly `0.999999`; inference failures deplete it until the instance goes offline.
 
 ## Run locally
 
@@ -41,14 +41,17 @@ See [GitHub's Pages workflow documentation](https://docs.github.com/en/pages/get
 
 | Input | Action |
 | --- | --- |
-| WASD / arrow keys | Move; nearby requests are targeted automatically |
+| WASD / arrow keys | Move |
+| Mouse | Aim toward the cursor; bolts fire automatically |
 | Space | Latency dash; temporary speed and invulnerability |
 | Q | Garbage collection pulse; damage nearby requests and clear hostile tokens |
 | 1 / 2 / 3 | Choose an upgrade when your model levels up |
 | Escape / P | Pause |
 | M | Toggle sound |
 | F | Toggle fullscreen |
-| Touch | Drag the left side to move; tap the ability buttons |
+| Touch | Drag the left side to move and the right side to aim; tap the ability buttons |
+
+Firing is automatic; aiming is manual. Parallel inference adds a spread of bolts centered on your aim. On touch screens, releasing the aim stick keeps your last direction.
 
 Collect mint fragments for experience and white fragments to restore uptime. Survive five minutes **and** resolve the final boss to complete the run. You can continue in endless mode afterward. Overclocked difficulty increases incoming traffic and damage.
 
@@ -64,7 +67,7 @@ npm run test:browser
 npm run build
 ```
 
-The Node tests cover movement normalization, arena boundaries, damage and invulnerability, cooldowns, upgrades, experience overflow, recovery, the final boss, reset, and bounded entity counts. Playwright checks actual controls, WebGL rendering, pause, upgrade selection, server failure/restart, local persistence, network independence, and a mobile touch session. Screenshots are written to the ignored `test-results/` directory.
+The Node tests cover manual aim, multishot spread, movement normalization, arena boundaries, damage and invulnerability, cooldowns, upgrades, experience overflow, recovery, the final boss, reset, and bounded entity counts. Playwright checks mouse aiming while moving, touch movement and aiming, WebGL rendering, pause, upgrade selection, server failure/restart, local persistence, and network independence. Screenshots are written to the ignored `test-results/` directory.
 
 Browser tests use an already installed Playwright Chromium. Set `UPTIME_BROWSER_PATH=/absolute/path/to/browser` if your existing Chromium executable is elsewhere. No browser downloads happen automatically. Development-only inspection hooks are available with `?qa=1`; Vite removes them from the production build.
 

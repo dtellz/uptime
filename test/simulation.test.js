@@ -30,9 +30,34 @@ test('dash provides protection and cannot be spammed',()=>{
 test('pulse resolves nearby requests, clears nearby hostile tokens, and preserves distant requests',()=>{
   const s=fresh();const close=s.spawnEnemy('request',{x:3,z:0}),far=s.spawnEnemy('context',{x:30,z:0});s.hostiles.push({x:2,z:2},{x:30,z:30});assert.equal(s.nova(),true);assert.ok(close.hp<=0);assert.equal(far.hp,far.maxHp);assert.equal(s.hostiles.length,1);assert.equal(s.nova(),false);assert.equal(s.kills,1);
 });
-test('auto inference actually resolves incoming requests and drops collectible experience',()=>{
-  const s=fresh();s.spawnEnemy('request',{x:6,z:0,speed:0});run(s,1);assert.ok(s.kills>=1);assert.ok(s.pickups.length>=1);assert.ok(s.tokens>=128);
+test('aimed inference resolves incoming requests and drops collectible experience',()=>{
+  const s=fresh();s.spawnEnemy('request',{x:6,z:0,speed:0});run(s,1,{x:0,z:0,aimX:1,aimZ:0});assert.ok(s.kills>=1);assert.ok(s.pickups.length>=1);assert.ok(s.tokens>=128);
   s.pickups[0].x=s.player.x;s.pickups[0].z=s.player.z;s.step(1/60);assert.ok(s.xp>=1);
+});
+test('shots follow manual aim even when a nearby request is in the opposite direction',()=>{
+  const s=fresh();s.spawnTimer=999;const enemy=s.spawnEnemy('request',{x:4,z:0,speed:0});
+  run(s,.5,{x:0,z:0,aimX:-1,aimZ:0});
+  assert.equal(enemy.hp,enemy.maxHp);assert.equal(s.kills,0);assert.ok(s.bullets.length>0);
+  assert.ok(s.bullets.every(b=>b.vx<0&&Math.abs(b.vz)<1e-8));
+  s.enemies=[];s.bullets=[];s.fireTimer=0;s.step(1/60,{aimX:0,aimZ:1});
+  assert.equal(s.bullets.length,1);assert.ok(s.bullets[0].vz>0);
+});
+test('aim is normalized and remains independent of movement, dash, and missing input',()=>{
+  const s=fresh();s.spawnTimer=999;s.step(1/60,{x:0,z:1,aimX:3,aimZ:4});
+  assert.equal(s.player.aimX,.6);assert.equal(s.player.aimZ,.8);
+  assert.equal(s.player.facingX,0);assert.equal(s.player.facingZ,1);
+  s.dash();run(s,.2,{x:0,z:1});assert.ok(s.player.z>3);assert.equal(s.player.aimX,.6);assert.equal(s.player.aimZ,.8);
+  for(const aim of [{aimX:0,aimZ:0},{aimX:NaN,aimZ:1},{aimX:Infinity,aimZ:0}])s.step(1/60,aim);
+  assert.equal(s.player.aimX,.6);assert.equal(s.player.aimZ,.8);
+});
+test('parallel inference spreads symmetrically around the selected aim',()=>{
+  for(const count of [2,3,4,5]){
+    const s=fresh();s.stats.multishot=count;s.fireTimer=0;s.step(1/60,{aimX:1,aimZ:0});
+    assert.equal(s.bullets.length,count);
+    assert.ok(s.bullets.every(b=>b.vx>0));
+    assert.ok(Math.abs(s.bullets.reduce((sum,b)=>sum+b.vz,0))<1e-8);
+    assert.ok(s.bullets[0].vz<0&&s.bullets.at(-1).vz>0);
+  }
 });
 test('level choices are unique, only offered choices apply, and every upgrade has an effect',()=>{
   for(const upgrade of UPGRADES){
