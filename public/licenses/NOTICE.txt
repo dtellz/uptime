@@ -1,0 +1,7 @@
+UPTIME runtime third-party notices
+
+Three.js — MIT License. See THREE-MIT.txt.
+Space Grotesk — SIL Open Font License 1.1. See Space-Grotesk-OFL.txt.
+IBM Plex Mono — SIL Open Font License 1.1. See IBM-Plex-Mono-OFL.txt.
+
+The game uses local procedural geometry, shaders, and synthesized audio.
