@@ -1,1 +1,26 @@
-.DS_Store/
+.DS_Store
+
+# Dependencies, build output, and local test recordings.
+node_modules/
+dist/
+test-results/
+playwright-report/
+.cache/
+tmp/
+releases/
+*.log
+
+# Local configuration and credentials must not enter public history.
+.env
+.env.*
+!.env.example
+.npmrc
+.netrc
+*.local
+*.local.*
+*.pem
+*.key
+*.p12
+*.pfx
+.openai/
+.codex/
